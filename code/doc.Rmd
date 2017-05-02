@@ -1,0 +1,81 @@
+---
+title: "Approximate Georeferencing"
+subtitle: "Fuzzy-matched record linkage of geographic point data"
+author: 
+ - "J. Andrew Harris"
+ - "Cole Tanigawa-Lau"
+ 
+abstract: Social sciencists have rapidly seized on the research potential of GIS data. However, the analyses that spatial data afford almost always require some amount of record linkage to join quantities of interest to the relevant spatial covariates. In locations with a still-nascent spatial data industry, researchers' typical problems with messy data are compounded with imprecise or unstandardized GIS files. We outline methods used to georeference all Kenyan polling stations from 1997 to 2013. Through this formidable but generalizable challenge, we provide what we hope to be a helpful guide to rigorous, systematic record linkage in the world of messy spatial data.
+
+bibliography: references.bib
+
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: true
+    theme: "spacelab"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_knit$set(root.dir = normalizePath(".."))
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Motivation
++ Facility of georeferencing in highly developed contexts (ESRI tools, Google Maps API).
++ Importance in developing countries (e.g., where homes are impossible to geocode)
++ Data available . . . linkage is missing
+
+# Software
+The processes conducted here use open source software only. We rely heavily on the programming language R [@base]. Aside from its large community of data analysts developing packages for data wrangling, R supports an impressive array of tools specifically for GIS. In this section, we introduce the software we found most helpful for georeferencing.
+
+## Packages
++ [@stringdist]
++ [@sp], [@maptools], [@rgeos], [@rgdal]
++ [@raster]
++ [@spatstat]
++ [@foreach]
++ [@doMC]
+
+## QGIS
++ [@qgis]
+
+# Example Data
+
+## Points
++ Match points (or similar): set of possible points (name potential sources of these data?)
++ List of names to georeference
++ Provide sample of ps and mp
+
+## Polygons
++ Importance of variation: size, administrative vs political, recency.
++ Potential sources
+
+## Assessing data quality
+### Boundary detail
+### Border alignment
+
+**A note on CRS (using UTM)**
+
+# Fuzzy String Matching
+
+## Pre-processing
+### Cleaning and truncating strings
+### Location types and subtypes
+
+## Finding thresholds by hand
+
+
+# Restricting with Polygon Boundaries
+
+
+# Evaluating Point Matches
+
+## E pluribus unum
+
+
+# Imputing points
+
+
+# References
