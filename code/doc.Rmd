@@ -5,9 +5,13 @@ author:
  - "J. Andrew Harris"
  - "Cole Tanigawa-Lau"
  
-abstract: Social sciencists have rapidly seized on the research potential of GIS data. However, the analyses that spatial data afford almost always require some amount of record linkage to join quantities of interest to the relevant spatial covariates. In locations with a still-nascent spatial data industry, researchers' typical problems with messy data are compounded with imprecise or unstandardized GIS files. We outline methods used to georeference all Kenyan polling stations from 1997 to 2013. Through this formidable but generalizable challenge, we provide what we hope to be a helpful guide to rigorous, systematic record linkage in the world of messy spatial data.
+abstract: Social scientists have rapidly seized on the research potential of GIS data. However, the analyses that spatial data afford almost always require some amount of record linkage to join quantities of interest to the relevant spatial covariates. In locations with a still-nascent spatial data industry, researchers' typical problems managing messy data are compounded with the difficulties of working with imprecise or unstandardized GIS files. We outline methods of record linkage specialized to the context of spatial data and subsequently used to assign geographic coordinates to all Kenyan polling stations from 1997 to 2013. Through a generalizable example of this automated geocoding process, we provide what we hope to be a helpful guide for rigorous, systematic record linkage in the world of messy spatial data.
+
+keywords: "record linkage, georeferencing, geocoding"
 
 bibliography: references.bib
+nocite: | 
+  @stringdist, @sp, @maptools, @rgeos, @rgdal, @raster, @spatstat, @foreach, @doMC
 
 output: 
   html_document:
@@ -17,65 +21,142 @@ output:
     theme: "spacelab"
 ---
 
+
 ```{r setup, include=FALSE}
 knitr::opts_knit$set(root.dir = normalizePath(".."))
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
 # Motivation
-+ Facility of georeferencing in highly developed contexts (ESRI tools, Google Maps API).
-+ Importance in developing countries (e.g., where homes are impossible to geocode)
-+ Data available . . . linkage is missing
 
-# Software
-The processes conducted here use open source software only. We rely heavily on the programming language R [@base]. Aside from its large community of data analysts developing packages for data wrangling, R supports an impressive array of tools specifically for GIS. In this section, we introduce the software we found most helpful for georeferencing.
+Vast improvements in processing power have opened the potential of spatial data analysis to the average social science researcher, laying the foundations for empirical work that has increasingly incorporated analyses of spatial relationships. Both the public and private sectors in many highly developed countries have advanced their spatial data capabilities in parallel with the technological innovations, producing the high quality GIS products and services to meet the rising demand. In the political science literature, these data have yielded numerous high-powered, micro-level studies of behavior and political phenomena.[^1] 
 
-## Packages
-+ [@stringdist]
-+ [@sp], [@maptools], [@rgeos], [@rgdal]
-+ [@raster]
-+ [@spatstat]
-+ [@foreach]
-+ [@doMC]
+Many developing countries do not have such robust support for researchers hoping to conduct spatial analyses. Development institutions have developed high-resolution raster interpolations on a near-global scale for quantities like population density, literacy, and mortality; however, key political covariates exist only at much higher levels of aggregation. Government-issued shapefiles for administrative boundaries tend to be of much lower quality and are subject to change over time, with or without a formal delimitation procedure. Accurate geographic coordinates are simply unavailable for many types of point data.[^2] Even if a local GIS industry were to develop quickly or governments invested decided to invest heavily in improving their GIS files, many of the micro-level studies would remain impossible to replicate in a developing context, since data like the lists of individuals' addresses contained in U.S. voter registers are not even collected in most countries.
 
-## QGIS
-+ [@qgis]
+The dearth of readily available, high-quality spatial data in the developing world, we believe, dramatically increases the relative demand for such a product. It is not as if these data are wholly inaccessible; with experience admittedly limited to Kenya, we would conjecture that spatial data in fact do exist for many developing countries. The problem is that these data are distributed sparsely across various people, departments, and organizations to the extent that significant time and personal effort are required to collect the data files even before any matching processes begin. As long as researchers cannot simply download these data in prepackaged form, though, they remain an untapped resource for those willing to put in the hours required to link the mass of geocoded points available from an inconvenient number of sources to the lists of schools, health clinics, markets, administrative offices, and polling centers that social scientists hope to study.
+
+The remainder of this document discusses in detail our process of matching location names to geographic points. [Background]  relates our methods to standardized strategies of record linkage. [Example Data] describes the representative sample of polling stations matched in this document and that various points and polygons required for the linkage process. [Georeferencing] contains the actual code and explanations used for the various steps in our matching method: preprocessing, geographic blocking, fuzzy string matching, match evaluation, and point imputation. The final section concludes. We assume of the reader an intermediate-level understanding of the `R` programming langauge and basic familiarity with the S4 spatial data classes defined in the `sp` package [@base;@sp].
+
+[^1]: Cite examples here. Footnote okay, or do we need to talk about their work with in-text citations?
+[^2]: As an example, we suggest using Google Maps, an excellent geocoding tool, to search for a point in the United States of America using very little information (e.g., ). Searching for a fairly comparable point in Kenya while supplying much more data (e.g., ).
+
+# Background
+## Literature on record linkage
+Christen [@Christen2012] offers one of the very few contemporary surveys of the record linkage literature, describing complex recent advances in generalized matching techniques . . .
+
+
+## Applications in the social sciences
 
 # Example Data
+We include with this document, for demonstration, replication, or readers' practice, a sample of the polling stations file and the geocoded points we match to. Also included are polygon shapefiles detailing several levels of Kenyan administrative boundaries at different points in time. Finally, we provide a 2010 population density raster from [WorldPop](www.worldpop.org) [@Linard2012].
+
+```{r packages, message=FALSE,echo=FALSE}
+library(sp)
+library(maptools)
+library(rgeos)
+library(rgdal)
+library(raster)
+library(spatstat)
+library(stringdist)
+library(stringr)
+library(dplyr)
+```
+```{r load_data, echo=FALSE, message=FALSE, warning=FALSE, include=FALSE, cache=TRUE}
+ps <- readRDS("data/ps_samp.rds")
+mp <- readRDS("data/mp_samp.rds")
+
+sl <- readRDS("data/sl.rds")
+caw <- readRDS("data/caw.rds")
+caw_old <- readRDS("data/caw_old.rds")
+const_old <- readRDS("data/const_old.rds")
+const13 <- readRDS("data/const13.rds")
+```
 
 ## Points
-+ Match points (or similar): set of possible points (name potential sources of these data?)
-+ List of names to georeference
-+ Provide sample of ps and mp
+We use two sets of point-specific data. First, the polling stations file, "data/ps_samp.rds", is a sample of polling stations scraped from voter registration and electoral results documents produced in relation to the 1997, 2002, 2007, 2010, and 2013 elections in Kenya as well as the 2005 constitutional referendum. These government files provide not only the name of the active polling station in that year (e.g., "MURKISIAN PRIMARY SCHOOL") but also important information on what administrative units govern the polling station. These regionally identifying variables provide a crucial "blocking" area with which we restrict our searches. However, because the boundaries of these geographic units have changed over time, and the Kenyan government has not always provided these data at a high quality, we cannot perfectly and consistently map polling stations to units like the county, constituency, ward, location, or sublocation. This difficulty is particularly pronounced along the borders of administrative units, where anecdotal evidence informs us that what the central Kenyan government may understand and treat as dividing lines are not as clear cut to chiefs and other local administrators on the ground.
+
+Second, we have a mass of geocoded "match points" in Kenya obtained from various local, foreign, public, and private sources. A sample of these is stored in "data/mp_samp.rds". The accuracy of the coordinates and the consistency of formatting in the name strings vary by source. Each "match point" represents a potential location for a given polling station, but the match points file is, in reality, neither complete nor unambiguous. Therefore, while the procedure outlined here links these two files and yields a version of the polling stations file with geographic coordinates attached to each record, some of these coordinates must be imputed rather than matched to.
 
 ## Polygons
-+ Importance of variation: size, administrative vs political, recency.
-+ Potential sources
+
+The polygon files included with this document represent several administrative levels. Redistricting and revisions in data quality have produced files that record changes in boundaries over time. In roughly decreasing order of scale, the units are as follows:
+
+1. pre-2010 (or "old") constituencies, 
+2. post-2010 constituencies,
+3. post-2010 constituency assembly wards ("wards" or "CAWs"),
+4. pre-2010 wards (or "old wards"), 
+5. locations, and 
+6. sublocations.
+
+Other regionally identifying information for polling stations, such as county, division, and province, are sometimes available, but they denote units that are too large to be helpful in narrowing down our searches.
 
 ## Assessing data quality
+
+Understanding the quality of the polygon shapefiles informs us, if roughly, of how much error we should expect at the borders of administrative units. We've found two attributes of shapefiles to be most informative with only a quick study of the data: boundary detail and border alignment.
+
 ### Boundary detail
+First, the level of detail provided at the boundaries of shapefile features indicates the amount of time, money, and effort put into creating the data. Building shapefiles that accurately represent the geography on the ground is labor intensive. Shortcuts, just like lower-resolution raster files, produce unrealistically block-ish boundaries where the land's natural cuts and curves were too costly to map. These differences are most conspicuous along shorelines.
+
+Below, we plot the overlay of three constituencies bordering Lake Victoria as represented in two different shapefiles.
+```{r bound_plot, message=FALSE, warning=FALSE, echo=FALSE, cache=TRUE}
+ex_const13 <- gUnaryUnion(const13[const13$const %in% c("MBITA", "SUBA", "NYATIKE"), ])
+
+ex_sl <- gUnaryUnion(sl[ex_const13, ])
+plot(ex_const13, col = "azure2")
+plot(ex_sl, add = TRUE, col = "coral1")
+```
+Such exploratory work is most easily performed in an interactive GUI like QGIS or ArcGIS, but even this simple plot demonstrates the vast differences in detail offered by the two files: a clear coastline, rather than block-ish figures, and distinct islands.
+
 ### Border alignment
+
++ Need examples
 
 **A note on CRS (using UTM)**
 
-# Fuzzy String Matching
 
-## Pre-processing
+# Georeferencing
+We now outline our methods of finding the closest geographic match for polling stations in Kenya. Here, our objective is _not_ to find the closest string match or to find as many health clinics as possible, but rather to minimize geographic error, even at the cost of finding what is certainly the wrong point.
+
+## Preprocessing
+
+It would be difficult to overstate the importance of the preprocessing stage. Time spent developing the consistency of the data early in the matching procedure can lead to enormous gains in accuracy down the road. Perhaps more importantly, this phase develops a familiarity with the data's idiosyncracies that becomes invaluable in developing strategies tailored to a specific data set or goal. By its nature, however, preprocessing requires techniques that may vary widely depending on whatever quirks of the unmatched data require standardization. We therefore begin with data that has already gone through some cleaning. We describe only a few preprocessing steps that are helpful in the most general cases, omitting any discussion of the more idiosyncratic adjustments we made.
+
 ### Cleaning and truncating strings
+
+Looking at a small subset of the polling station names, we see that many of the polling stations are located at schools.
+```{r murk1, eval = FALSE}
+set.seed(10)
+
+sample_n(ps@data, 20)
+```
+
+Where some polling stations in some years are recorded in the pattern "PR. SCH", variations such as "PRI SCH", "PRIMARY SCHOOL", and "PR.SCH" also exist. One approach would be to standardize the abbreviation of "PRIMARY" and "SCHOOL" by replacing all permutations with a single string. However, as you'll see in the following section, the algorithm we use for fuzzy matching inspects differences between strings normalized by the number of characters. In the example below, we return two different string distance scores for what is essentially the same amount of information.
+
+```{r, jw_trunc}
+stringdist("ALPHA PRIMARY SCHOOL", "BETA PRIMARY SCHOOL", method = "jw", p = 0.15)
+
+stringdist("ALPHA PR. SCH", "BETA PR. SCH", method = "jw", p = 0.15)
+```
+
+Consider the polling station we have labeled with the unique identifier "PS-17303":
+PS-17303 exists for three election cycles beginning in 2007. The name of the polling station remains unchanged, but it is recorded differently in 2013, at which point the abbreviation "PR.SCH" is expanded to "PRIMARY SCHOOL". 
+
 ### Location types and subtypes
 
-## Finding thresholds by hand
+## Blocking with Polygon Boundaries
+
+## Fuzzy String Matching
+
+### Finding thresholds by hand
+
+## Evaluating Point Matches
+
+### E pluribus unum
 
 
-# Restricting with Polygon Boundaries
+## Imputing points
 
-
-# Evaluating Point Matches
-
-## E pluribus unum
-
-
-# Imputing points
-
+# Conclusion
++ Improvements: ML applications (random forests?)
 
 # References
