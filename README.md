@@ -4,4 +4,4 @@ Social scientists have rapidly seized on the research potential of GIS data. How
 
 We outline methods of record linkage specialized to the context of spatial data. We use these techniques to assign geographic coordinates to all Kenyan polling stations from 1997 to 2013. Through a generalizable example of this automated geocoding process, we provide what we hope to be a helpful guide for rigorous, systematic record linkage in the world of messy spatial data.
 
-The data to reproduce our results is available to download [here](https://drive.google.com/drive/folders/0B8K1PQKTPN42bS1SUXpvSUNvNUU?usp=sharing). Please direct correspondence to Cole Tanigawa-Lau at <mailto:coletl@nyu.edu>.
+The data to reproduce our results is available to download [here](https://drive.google.com/drive/folders/0B8K1PQKTPN42bS1SUXpvSUNvNUU?usp=sharing). Please direct correspondence to Cole Tanigawa-Lau at <coletl@nyu.edu>.
