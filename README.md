@@ -8,11 +8,7 @@ To read the main document, please proceed directly to `code/doc.html`. To reprod
 1) fork this repository, 
 2) download the [replication data](https://drive.google.com/drive/folders/0B8K1PQKTPN42bS1SUXpvSUNvNUU?usp=sharing) files, and 
 3) place them in a directory named `data` in the main project directory.
-<<<<<<< HEAD
 
-Opening `georef.Rproj` in RStudio will automatically set your working directory, so you can run the code without editing file paths.
-=======
 Opening `georef.Rproj` in RStudio will automatically set your working directory; you can run the code without editing file paths.
->>>>>>> 19aa27b380d18fac0a47c14e4b1187211fe98597
 
 Please direct any questions to Cole Tanigawa-Lau at <coletl@nyu.edu>.
