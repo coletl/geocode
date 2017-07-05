@@ -11,7 +11,7 @@ To read the main document, please download or clone this repository to your loca
 To reproduce our results, you should
 1) download/clone this repository, 
 2) download the [replication data](https://drive.google.com/drive/folders/0B8K1PQKTPN42bS1SUXpvSUNvNUU?usp=sharing), and 
-3) place them in a directory named `data` in the main project directory.
+3) place the data files in a directory named `data` in the main project directory.
 
 Opening `georef.Rproj` in RStudio will automatically set your working directory, so you can run the code without editing file paths.
 
