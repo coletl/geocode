@@ -4,7 +4,8 @@ Social scientists have rapidly seized on the research potential of GIS data. How
 
 We outline methods of record linkage specialized to the context of spatial data. We use these techniques to assign geographic coordinates to all Kenyan polling stations from 1997 to 2013. Through a generalizable example of this automated georeferencing process, we provide what we hope to be a helpful introduction to rigorous, systematic record linkage in the world of messy spatial data.
 
-To read the main document, please download or clone this repository to your local machine and open `code/doc.html` in a web browser. You may also view the document [here](http://htmlpreview.github.com/?https://github.com/coletl/georef/blob/master/code/doc.html).
+### To read the main document
+Please download or clone this repository to your local machine and open `code/doc.html` in a web browser. You may also view the document [here](http://htmlpreview.github.com/?https://github.com/coletl/georef/blob/master/code/doc.html).
 
 To reproduce our results, you should
 1) download/clone this repository, 
