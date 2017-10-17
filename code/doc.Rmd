@@ -32,22 +32,22 @@ knitr::opts_chunk$set(echo = TRUE)
 
 # Motivation
 
-Vast improvements in processing power have opened the potential of spatial data analysis to the average social science researcher, laying the foundations for empirical work that has incorporated increasingly complex analyses of spatial relationships. Both the public and private sectors in many highly developed countries have advanced their spatial data capabilities in parallel with technological innovations, producing high-quality GIS products and services to meet the rising demand. In the political science literature, these data have yielded numerous high-powered, micro-level studies of behavior and political phenomena.[^micro_examples] 
+Vast improvements in processing power have opened the potential of spatial data analysis to the average social science researcher, laying the foundations for empirical work that has incorporated increasingly complex analyses of spatial relationships. Both the public and private sectors in many highly developed countries have advanced their spatial data capabilities in parallel with technological innovations, producing high-quality GIS products and services to meet the rising demand. In the political science literature, these data have yielded numerous high-powered, micro-level studies of behavior and political phenomena.
 
-Many developing countries do not have such robust support for researchers hoping to conduct spatial analyses. Development institutions have produced high-resolution raster interpolations on a near-global scale for quantities like population density, literacy, and mortality; however, key political covariates exist only at much higher levels of aggregation. Government-issued shapefiles for administrative boundaries tend to be of much lower quality and are subject to change over time, with or without a formal delimitation procedure. Accurate geographic coordinates are simply unavailable for many types of point data.[^gmaps] Even if a local GIS industry were to develop quickly or governments were to invest heavily in improving their GIS files, many micro-level studies would remain impossible to replicate in a developing context, since data like the lists of individuals' addresses contained in U.S. voter registers are not even collected in most countries.
+Many developing countries do not have such robust support for researchers hoping to conduct spatial analyses. Development institutions have produced high-resolution raster interpolations on a near-global scale for quantities like population density, literacy, and mortality; however, key political covariates exist only at much higher levels of aggregation. Government-issued shapefiles for administrative boundaries tend to be of much lower quality and are subject to change over time, with or without a formal delimitation procedures. Accurate geographic coordinates are simply unavailable for many types of point data.
 
-The dearth of readily available, high-quality spatial data in the developing world, we believe, dramatically increases the relative demand for such a product. These data are not wholly inaccessible. With experience admittedly limited to Kenya, we would conjecture that spatial data in fact do exist for many developing countries. The problem is that these data are distributed sparsely across various people, departments, and organizations to the extent that significant time and personal effort are required to collect the data files even before any matching processes begin. As long as researchers cannot simply download these data in prepackaged form, though, they remain an untapped resource for those willing to put in the hours required to link the mass of geocoded points available from an inconvenient number of sources to the lists of schools, health clinics, markets, administrative offices, and polling centers that social scientists hope to study.
+<!-- Even if a local GIS industry were to develop quickly or governments were to invest heavily in improving their GIS files, many micro-level studies would remain impossible to replicate in a developing context, since data like the lists of individuals' addresses contained in U.S. voter registers are not even collected in most countries. -->
+
+The dearth of readily available, high-quality spatial data in the developing world, we believe, dramatically increases the relative demand for such a product. These data are not wholly inaccessible. With experience admittedly limited to Kenya, we would conjecture that spatial data in fact do exist for many developing countries. The problem is that these data are distributed sparsely across various people, departments, and organizations to the extent that significant time and personal effort are required to collect the data files even before any matching processes begin. As long as researchers cannot simply download these data in prepackaged form, though, they remain an untapped resource for those willing to put in the hours required to link the mass of geocoded points, available from an inconvenient number of sources, to the lists of schools, health clinics, markets, administrative offices, and polling centers that social scientists hope to study.
 
 The remainder of this document discusses in detail our process of matching location names to geographic points.
 <!-- [Background] relates our methods to standardized strategies of record linkage. -->
-[Example Data] describes the sample of polling stations matched in this document and the various points and polygons required for the linkage process. [Georeferencing] explains the techniques we've found helpful in our matching method.
-Talk about de-duplication?
+[Example Data] describes the sample of polling stations available to download and the various points and polygons required for the linkage process. [Georeferencing] explains the techniques we've found helpful in our matching method.
 [Imputing points] discusses our process of stochastically imputing point coordinates for polling stations we could not accurately georeference.
 
-We assume of the reader an intermediate-level understanding of the `R` programming langauge and basic familiarity with the S4 spatial data classes defined in the `sp` package [@base;@sp]. Many processes in this document are run in parallel on six cores. All operations are performed on a server running R version 3.4.0 (64-bit) under Ubuntu 14. Reproducing the results on a machine with less than 32GB of RAM or using the 32-bit version of R may require adjusting the code.
+We assume of the reader an intermediate-level understanding of the `R` programming langauge and basic familiarity with the S4 spatial data classes defined in the `sp` package [@base;@sp]. Some processes in this document are run in parallel on six cores. All operations are performed on a server running R version 3.4.0 (64-bit) under Ubuntu 14. Reproducing the results on a machine with less than 32GB of RAM or using the 32-bit version of R may require adjusting the code.
 
-[^micro_examples]: Cite examples here. Footnote okay, or do we need to talk about their work with in-text citations?
-[^gmaps]: As an example, we suggest using Google Maps, an excellent geocoding tool, to search for a point in the United States of America using very little information (e.g., ). Searching for a fairly comparable point in Kenya while supplying much more data (e.g., ).
+<!-- [^gmaps]: As an example, we suggest using Google Maps, an excellent geocoding tool, to search for a point in the United States of America using very little information (e.g., ). Searching for a fairly comparable point in Kenya while supplying much more data (e.g., ). -->
 
 <!-- # Background -->
 <!-- ## Literature on record linkage -->
@@ -57,7 +57,7 @@ We assume of the reader an intermediate-level understanding of the `R` programmi
 <!-- ## Applications in the social sciences -->
 
 # Example Data
-We demonstrate our methods using samples of the polling stations file and geocoded points. We also rely on polygon shapefiles detailing several levels of Kenyan administrative boundaries at different points in time. Finally, we use a 2010 population density raster for Kenya from [WorldPop](www.worldpop.org) [@Linard2012]. All of these data are available to download [here](https://drive.google.com/open?id=0B8K1PQKTPN42V19EcGIzUHhJb3c).
+We demonstrate our methods using samples of the polling stations file and a set of geocoded points. We also rely on polygon shapefiles detailing several levels of Kenyan administrative boundaries at different points in time. Finally, we use a 2010 population density raster for Kenya from [WorldPop](www.worldpop.org) [@Linard2012]. All of these data are available to download from the [GitHub repository](github.com/coletl/georef).
 
 ```{r packages, message=FALSE,echo=TRUE}
 # Load packages
@@ -82,7 +82,7 @@ source("code/functions.R")
 ## Points
 We use two sets of point-specific data. First, the polling stations file, `data/ps_samp.rds`, is a sample of polling stations scraped from voter registration and electoral results documents produced in relation to the 1997, 2002, 2007, 2010, and 2013 elections in Kenya as well as the 2005 constitutional referendum. These government files provide not only the name of the active polling station in that year (e.g., "MURKISIAN PRIMARY SCHOOL") but also important information on what administrative units govern the polling station. These regionally identifying variables allow us to index to a geographic area, or "block", within which we roughly restrict our searches. (More on this below.)
 
-Second, we have a mass of geocoded "match points" in Kenya obtained from various local, foreign, public, and private sources. A sample of these is stored in `data/mp_samp.rds`. The accuracy of the coordinates and the consistency of formatting in the name strings vary by source. Each "match point" represents a potential location for a given polling station, but the match points file is, in reality, neither complete nor unambiguous. Therefore, while the procedure outlined here links these two files and yields a version of the polling stations file with geographic coordinates attached to each record, some of these coordinates must be imputed rather than matched to.
+Second, we have a mass of geocoded "match points" in Kenya obtained from various local, foreign, public, and private sources. A sample of these is stored in `data/mp_samp.rds`. The accuracy of the coordinates and the consistency of formatting in the name strings vary by source. Each "match point" represents a potential location for a given polling station, but the match points file is, in reality, neither complete nor unambiguous. Therefore, while the procedure outlined here links these two files and yields a version of the polling stations file with geographic coordinates attached to each record, some of these coordinates cannot be matched to and must be imputed instead.
 
 ```{r load_pts, echo=TRUE, message=FALSE, warning=FALSE, cache=TRUE}
 # Read points data
@@ -133,11 +133,23 @@ plot(ex_sl, add = TRUE, col = "coral1")
 Such exploratory work is most easily performed in an interactive GUI like QGIS or ArcGIS, but even this simple plot demonstrates the vast differences in detail offered by the two files: a clear coastline, rather than blockish figures, and distinct islands.
 
 ### Border alignment
+A second indicator of a shapefile's quality can be seen at points where two features meet. From a distance, the two constituencies plotted below appear to be drawn somewhat roughly: suspiciously straight lines mark borders.
+```{r border_align}
+plot(const13[const13$constid %in% 239:240, ], col = "azure2")
+```
 
-+ Need examples
+Again, an interactive GUI might be helpful here to zoom in on the boundary between these to constituencies. However, we can make do by unioning the two features together.
 
-**A note on CRS (using UTM)**
+```{r border_align2}
+plot(gUnaryUnion(const13[const13$constid %in% 239:240, ]))
+```
 
+Despite converting the object into a single feature, we still observe a partial line delimiting one constituency from the other. That line is the result of a gap between the two features, a flaw in the shapefile.
+
+
+### A note on coordinate reference systems{-}
+
+Whenever possible, we use UTM zone 37S as our coordinate reference system. Working with a projected CRS allows us to use functions like `gBuffer()` seamlessly, defining buffer widths in easily understood units like meters. If you are working with a relatively small area (e.g., a single medium-sized country), we would recommend picking an appropriate projected CRS early in your data cleaning process.
 
 # Georeferencing
 We now outline our methods of finding the closest geographic match for polling stations in Kenya. It is worth noting now that our objective is neither to find the closest string match nor to find as many schools or health clinics as possible. Rather, we aim to minimize geographic error, even at the cost of finding what is certainly the wrong point.
