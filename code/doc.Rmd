@@ -11,7 +11,7 @@ keywords: "record linkage, georeferencing, geocoding"
 
 bibliography: references.bib
 nocite: | 
-  @maptools, @rgeos, @rgdal, @raster, @spatstat, @foreach, @doMC
+  @base, @maptools, @rgeos, @rgdal, @raster, @spatstat
 
 output: 
   html_document:
@@ -44,7 +44,7 @@ The remainder of this document discusses in detail our process of matching locat
 Talk about de-duplication?
 [Imputing points] discusses our process of stochastically imputing point coordinates for polling stations we could not accurately georeference.
 
-We assume of the reader an intermediate-level understanding of the `R` programming langauge and basic familiarity with the S4 spatial data classes defined in the `sp` package [@base;@sp]. Many processes in this document are run in parallel on six cores. All operations are performed on a server running R version 3.4.0 (64-bit) under Ubuntu 14. Reproducing the results on a machine with less than 32GB of RAM or the 32-bit version may require adjusting the code.
+We assume of the reader an intermediate-level understanding of the `R` programming langauge and basic familiarity with the S4 spatial data classes defined in the `sp` package [@base;@sp]. Many processes in this document are run in parallel on six cores. All operations are performed on a server running R version 3.4.0 (64-bit) under Ubuntu 14. Reproducing the results on a machine with less than 32GB of RAM or using the 32-bit version of R may require adjusting the code.
 
 [^micro_examples]: Cite examples here. Footnote okay, or do we need to talk about their work with in-text citations?
 [^gmaps]: As an example, we suggest using Google Maps, an excellent geocoding tool, to search for a point in the United States of America using very little information (e.g., ). Searching for a fairly comparable point in Kenya while supplying much more data (e.g., ).
@@ -57,7 +57,7 @@ We assume of the reader an intermediate-level understanding of the `R` programmi
 <!-- ## Applications in the social sciences -->
 
 # Example Data
-We demonstrate our methods using samples of the polling stations file and the geocoded points. We also rely on polygon shapefiles detailing several levels of Kenyan administrative boundaries at different points in time. Finally, we use a 2010 population density raster for Kenya from [WorldPop](www.worldpop.org) [@Linard2012]. All of these data are available to download [here](https://drive.google.com/open?id=0B8K1PQKTPN42V19EcGIzUHhJb3c).
+We demonstrate our methods using samples of the polling stations file and geocoded points. We also rely on polygon shapefiles detailing several levels of Kenyan administrative boundaries at different points in time. Finally, we use a 2010 population density raster for Kenya from [WorldPop](www.worldpop.org) [@Linard2012]. All of these data are available to download [here](https://drive.google.com/open?id=0B8K1PQKTPN42V19EcGIzUHhJb3c).
 
 ```{r packages, message=FALSE,echo=TRUE}
 # Load packages
@@ -69,9 +69,8 @@ library(raster)
 library(spatstat)
 
 library(parallel)
-library(doMC)
-library(foreach)
 
+library(matrixStats)
 library(stringdist)
 library(stringr)
 library(dplyr)
@@ -87,7 +86,7 @@ Second, we have a mass of geocoded "match points" in Kenya obtained from various
 
 ```{r load_pts, echo=TRUE, message=FALSE, warning=FALSE, cache=TRUE}
 # Read points data
-ps <- readRDS("data/ps_samp.rds")
+ps <- readRDS("data/ps_samp.rds")@data
 mp <- readRDS("data/mp_samp.rds")
 ```
 
@@ -200,7 +199,7 @@ Each matching function follows the same basic framework:
 7. Among the matches with the minimum string distance score, pick those with the best quality scores.
 8. Throw out matches that are too far from the polling station's lower-level administrative boundaries.
 
-Below, we describe the blocking and fuzzy matching steps in detail before walking through the code for a simplified matching loop with a single polling station. Next, we use the example data sets to demonstrate the two functions we used first in our matching process, `match_lsl()` and `match_inf_loc13()`. Together, these functions georeference nearly 75 percent of Kenya's 1997-2013 polling stations. We discuss two techniques particular to these functions; their full definitions can be found in `code/functions.R`.
+Below, we describe the blocking and fuzzy matching steps in detail before walking through the code for a simplified matching function with a single polling station. We then use the example data sets to demonstrate the two functions we used first in our matching process, `match_lsl()` and `match_inf_loc13()`. Together, these functions georeference roughly 75 percent of Kenya's 1997-2013 polling stations. We discuss two techniques particular to these functions; their full definitions can be found in `code/functions.R`.
 
 ### Blocking with polygon boundaries
 Our full data set of match points contains over 125,000 coordinates. Running matching algorithms for each of the nearly 26,000 polling stations would therefore be hugely expensive. To save time and RAM, we adapt a common record linkage technique, blocking, to a spatial context: we split our matching data geographically and use constituency code identifiers as a blocking key.
@@ -227,40 +226,125 @@ save_list(sl_constb, "data/sl_constb")
 Each match points and sublocations subset is named for the old (i.e., pre-2013) constituency code in which the spatial features are contained. We use these constituency codes as blocking keys by searching for matches only within subsets corresponding to a polling station's constituency. For example, when searching for matches to a polling station assigned to constituency `067` in 2002, we load only the objects in `data/mp_constb/067.rds` and `data/sl_constb/067.rds`.
 
 ### Fuzzy string matching
-We use the `stringdist` package to calculate [Jaro-Winkler distances](https://en.wikipedia.org/wiki/Jaro%E2%80%93Winkler_distance) between the polling stations data and the match points and polygon name strings [@stringdist]. The `stringdist` package supports a number of metrics for measuring string similarity. We've found the Jaro-Winkler distance to work best for our purposes. Results of `stringdist(a, b, method = "jw")` are scaled between 0 and 1, for which lower numbers reflect more similar strings.
+We use the `stringdist` package to calculate [Jaro-Winkler distances](https://en.wikipedia.org/wiki/Jaro%E2%80%93Winkler_distance) between the polling stations data and both the match points' and polygon's name strings [@stringdist]. The `stringdist` package supports a number of metrics for measuring string similarity. We've found the Jaro-Winkler distance to work best for our purposes. Results of `stringdist(a, b, method = "jw")` are scaled between 0 and 1, for which lower numbers reflect more similar strings.
 
 Aside from supporting multiple string metrics, one advantage of `stringdist()` over `agrep()` is that it provides a sense of how the distance calculations change across comparisons. Inspecting the results by hand allows you to pick precise thresholds for the minimum acceptable string distance.
 
-```{r stringdist}
-set.seed(10)
+```{r stringdist, cache = TRUE}
+set.seed(575)
+# Sample polling stations to work with and pull out 
+# the names of their 2002 sublocations
 sl_samp <- sample(ps$sl02[ps$sl02 != ""], 20)
+
+# Compute string distances between polling stations' sublocations
+# and the names contained in the sublocations shapefile
 sd_l <- lapply(sl_samp, stringdist,
                b = sl$SUBLOCATIO, method = "jw")
 
 # Find sublocation strings with the minimum string distance score
-# In this example, we'll just take the first match
+# (In this example, we'll just take the first match)
 sl_match <- sapply(sd_l, function(x) sl[x == min(x), ]$SUBLOCATIO[1])
 sl_dist <- sapply(sd_l, min)
 
+# Bind the results in a data.frame
 df <- data.frame(sl_samp, sl_match, sl_dist,
                  stringsAsFactors = FALSE)
-df2 <- arrange(df, desc(sl_dist))
 
+df2 <- arrange(df, desc(sl_dist))
 head(df2, 10)
 ```
 
+In the example above, fourteen of the twenty polling stations were associated with 2002 sublocations that had an exact name match in the sublocations shapefile. The string distances listed in the `sl_dist` column tell us a little about how `stringdist()` scored the sublocation names that weren't identical. For this particular sample, it looks like matches with a score less than 0.11 would be acceptable.[^sl_dup] We would encourage researchers to go through this exercise---with their full data set---each time they set a string distance threshold.
+
+[^sl_dup]: Given that sublocation names are not always unique, we could be more confident in these matches if we had blocked on constituency.
+
+
 ### Walkthrough with one polling station
+We'll now go through the steps outlined above in order to match a single polling station. This workflow demonstrates the core stages of our georeferencing procedure: spatial blocking, fuzzy string matching, and match evaluation. We simplify the exercise by using polygon data only from 2002. The point name strings have already been cleaned and truncated.
 
-### Applying functions to example data
+```{r walkthrough, warning = FALSE}
+# Pick a polling station
+tps <- sample_n(ps, 1)
 
-# Evaluating Point Matches
+# Blocking ----
+# Use old constituency code as a blocking key
+tconst <- const_old[const_old$id == tps$constid10, ]
+tconstb <- gBuffer(tconst, width = 500)
 
-## E pluribus unum
+# Subset match points and sublocations to this buffered constituency
+tmp <- mp[tconstb, ]
+tsl <- sl[tconstb, ]
+
+# Fuzzy string matching, polygons then points ----
+strd_poly_A <- stringdist(tps$sl07, tsl$SUBLOCATIO, method = "jw")
+strd_poly_B <- stringdist(tps$loc07, tsl$LOCATION, method = "jw")
+
+strd_mp <- stringdist(tps$trunc13, tmp$trunc, method = "jw")
+
+# Index to the closest polygon and point matches
+poly_ind_A <- which(strd_poly_A == min(strd_poly_A) & strd_poly_A < 0.08)
+poly_ind_B <- which(strd_poly_B == min(strd_poly_B) & strd_poly_B < 0.08)
+
+mp_ind <- which(strd_mp == min(strd_mp))
+
+# Quality measures ----
+# Calculate geographic distance between point and polygon matches
+gdist_A <- gDistance(tmp[mp_ind, ], tsl[poly_ind_A, ], byid = TRUE)
+gdist_B <- gDistance(tmp[mp_ind, ], tsl[poly_ind_B, ], byid = TRUE)
+
+# Record the minimum distance for each potential point match
+min_gdist_A <- colMins(gdist_A)
+min_gdist_B <- colMins(gdist_B)
+
+type_match <- tps$type13 == tmp$type[mp_ind]
+subtype_match <- tps$subtype13 == tmp$subtype[mp_ind]
+
+# Build final output
+tmatch <- tmp[mp_ind, ]
+tmatch@data <- 
+  data.frame(tps, type_match, subtype_match, min_gdist_A, min_gdist_B,
+             mp_name = tmatch$name, mp_code = tmatch$code, mp_source = tmatch$source,
+             slmatch = tsl$SL_ID[poly_ind_A])
+```
+
+Our result here, `tmatch`, contains a single likely location for the polling station chosen. We've also included additional data on the quality of each match, as well as the ID number of the sublocation in which we matched the polling station.
+
+<!-- ### Inferring administrative boundaries -->
+<!-- The example above would constitute a single step in our matching process. We iterate the same basic procedure for all unmatched polling stations using progressively less precise blocking methods. -->
+
+<!-- The lower levels of precision are typically due to using lower-quality, less recent data or using larger polygons to subset the match points. A polling station may be missing the data that allow us to link it to a relatively small polygon. In these cases, it may be possible to infer that polling station's inclusion in a set of administrative boundaries, based on data from other polling stations. -->
+
+<!-- For example, polling sttations newly created in 2013 are missing any information on the encompassing sublocation. However, we do observe the 2013 ward. Rather than begin by searching in an entire ward, we can instead within potential sublocation matches, defined by as boundaries have been associated with each 2013 ward according to older polling stations. We then look for match points within these -->
+
+<!-- # Evaluating Point Matches -->
+
+<!-- ## E pluribus unum -->
 
 
 # Imputing points
+The example above would constitute a single step in our matching process. We iterate the same basic procedure for all unmatched polling stations using progressively less precise blocking methods. The `code/functions.R` script contains the full code for our two most precise matching functions: `match_lsl()` and `match_inf_loc13()`.
+
+For any polling stations remaining unmatched after all steps, we resort to imputing points within the smallest geographic area possible. The `spatstat` package provides functions and classes to make this process simple, allowing us to use a population density raster as the probability density of the polling station locations. Below, we will continue with the previous example's polling station, as if we had not found any point matches.
+```{r impute}
+# Index to matched sublocation
+tsl <- sl[sl$SL_ID == tmatch$slmatch, ]
+
+# Read raster (file cropped from full Kenya population density raster)
+pd <- raster("data/pd_sl3677.tif")
+
+# Generate point image as probability density
+ppp <- rpoint(n = 1, f = as.im(pd))
+
+# Convert to spatial point object
+imp_point <- as(ppp, "SpatialPoints")
+```
+
 
 # Conclusion
-+ Improvements: ML applications (random forests?)
+Social scientists have rapidly seized on the research potential of GIS data. However, the analyses that spatial data afford almost always require some amount of record linkage to join quantities of interest to the relevant spatial covariates. In locations with a still-nascent spatial data industry, researchers' typical problems managing messy data are compounded with the difficulties of working with imprecise or unstandardized GIS files.
 
-# References
+We hope that this guide can offer a useful resource for those looking to georeference points rigorously and systematically. The methods presented here are far from perfect: errors may still occur at any stage of our linkage process. However, we have found this procedure to be both sufficiently accurate and scalable to relatively large data sets.
+
+<!-- + Improvements: ML applications (random forests?) -->
+
+<!-- # References -->
