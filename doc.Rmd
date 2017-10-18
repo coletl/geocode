@@ -25,7 +25,6 @@ text-align: justify}
 </style>
 
 ```{r setup, include=FALSE}
-knitr::opts_knit$set(root.dir = normalizePath(".."))
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
@@ -70,6 +69,9 @@ library(dplyr)
 
 # Load user-defined functions
 source("code/functions.R")
+
+# Set number of cores for parallel processing
+cores <- 6
 ```
 
 ## Points 
@@ -211,7 +213,7 @@ Our full data set of match points contains over 125,000 coordinates. Running mat
 We first buffer our constituency polygons by 500 meters to account for error in the spatial data. Next, we build a list in which each element is the subset of match points contained by each of the buffered constituencies. We use a convenience function defined in `code/functions.R`, to save each object in a new directory: `data/mp_constb/`. By default, the name of each file matches the name of the list element to which the file corresponds. We repeat this process to split the sublocation polygons into constituency blocks.
 
 
-```{r mp_sl_constb, cache=TRUE}
+```{r mp_sl_constb, cache=TRUE, warning=FALSE}
 # Buffer old and new constituencies
 constb <- gBuffer(const_old, byid = TRUE, width = 500)
 l_constb <- split(constb, constb$id)
@@ -226,20 +228,20 @@ mp@data <- data.frame(mp@data, mp_sl)
 
 # Split match points by buffered constituency
 mp_constb <- mclapply(l_constb, function(x) mp[x, ],
-                      mc.cores = 6)
+                      mc.cores = cores)
 save_list(mp_constb, "data/mp_constb")
 
 mp_const13b <- mclapply(l_const13b, function(x) mp[x, ],
-                        mc.cores = 6)
+                        mc.cores = cores)
 save_list(mp_const13b, "data/mp_const13b")
 
 # Split sublocations by buffered constituency
 sl_constb <- mclapply(l_constb, function(x) sl[x, ],
-                      mc.cores = 6)
+                      mc.cores = cores)
 save_list(sl_constb, "data/sl_constb")
 
 sl_const13b <- mclapply(l_const13b, function(x) sl[x, ],
-                        mc.cores = 6)
+                        mc.cores = cores)
 save_list(sl_const13b, "data/sl_const13b")
 ```
 
@@ -345,7 +347,7 @@ lsl_match <- mclapply(match_list,
                       const = constb,
                       urb_const = urb_constid02,
                       polys = c("sl97", "loc97", "sl02", "loc02", "sl07", "loc07"),
-                      mc.cores = 6)
+                      mc.cores = cores)
 
 # Find unmatched polling stations
 found_lsl <- map(lsl_match, "match_mp")
@@ -372,7 +374,7 @@ inf_loc13_match <- mclapply(match_list2,
                             const = const13b,
                             urb_const = urb_constid13,
                             polys = c("sl13", "loc13"),
-                            mc.cores = 6)
+                            mc.cores = cores)
 ```
 
 # Imputing points
