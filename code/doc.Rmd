@@ -11,8 +11,7 @@ keywords: "record linkage, georeferencing, geocoding"
 
 bibliography: references.bib
 nocite: | 
-  @base, @maptools, @rgeos, @rgdal, @raster, @spatstat
-
+  @sp, @maptools, @rgeos, @rgdal, @raster, @spatstat, @parallel, @matrixStats, @stringdist, @stringr, @purrr, @dplyr
 output: 
   html_document:
     toc: true
@@ -32,15 +31,8 @@ knitr::opts_chunk$set(echo = TRUE)
 
 # Motivation
 
-Vast improvements in processing power have opened the potential of spatial data analysis to the average social science researcher, laying the foundations for empirical work that has incorporated increasingly complex analyses of spatial relationships. Both the public and private sectors in many highly developed countries have advanced their spatial data capabilities in parallel with technological innovations, producing high-quality GIS products and services to meet the rising demand. In the political science literature, these data have yielded numerous high-powered, micro-level studies of behavior and political phenomena.
-
-Many developing countries do not have such robust support for researchers hoping to conduct spatial analyses. Development institutions have produced high-resolution raster interpolations on a near-global scale for quantities like population density, literacy, and mortality; however, key political covariates exist only at much higher levels of aggregation. Government-issued shapefiles for administrative boundaries tend to be of much lower quality and are subject to change over time, with or without a formal delimitation procedures. Accurate geographic coordinates are simply unavailable for many types of point data.
-
-<!-- Even if a local GIS industry were to develop quickly or governments were to invest heavily in improving their GIS files, many micro-level studies would remain impossible to replicate in a developing context, since data like the lists of individuals' addresses contained in U.S. voter registers are not even collected in most countries. -->
-
-The dearth of readily available, high-quality spatial data in the developing world, we believe, dramatically increases the relative demand for such a product. These data are not wholly inaccessible. With experience admittedly limited to Kenya, we would conjecture that spatial data in fact do exist for many developing countries. The problem is that these data are distributed sparsely across various people, departments, and organizations to the extent that significant time and personal effort are required to collect the data files even before any matching processes begin. As long as researchers cannot simply download these data in prepackaged form, though, they remain an untapped resource for those willing to put in the hours required to link the mass of geocoded points, available from an inconvenient number of sources, to the lists of schools, health clinics, markets, administrative offices, and polling centers that social scientists hope to study.
-
-The remainder of this document discusses in detail our process of matching location names to geographic points.
+Vast improvements in processing power have opened the potential of spatial data analysis to the average social science researcher, laying the foundations for empirical work that has incorporated increasingly
+complex analyses of spatial relationships. Both the public and private sectors in many highly developed countries have advanced their spatial data capabilities in parallel with technological innovations, producing high-quality GIS products and services to meet the rising demand. In the political science literature, these data have yielded numerous high-powered, micro-level studies of behavior and political phenomena. Many developing countries do not have such robust support for researchers hoping to conduct spatial analyses. Development institutions have produced high-resolution raster interpolations on a near-global scale for quantities like population density, literacy, and mortality; however, key political covariates exist only at much higher levels of aggregation. Government-issued shapefiles for administrative boundaries tend to be of much lower quality and are subject to change over time, with or without a formal delimitation procedures. Accurate geographic coordinates are simply unavailable for many types of point data. The dearth of readily available, high-quality spatial data in the developing world, we believe, dramatically increases the relative demand for such a product. These data are not wholly inaccessible. With experience admittedly limited to Kenya, we would conjecture that spatial data in fact do exist for many developing countries. The problem is that these data are distributed sparsely across various people, departments, and organizations to the extent that significant time and personal effort are required to collect the data files even before any matching processes begin. As long as researchers cannot simply download these data in prepackaged form, though, they remain an untapped resource for those willing to put in the hours required to link the mass of geocoded points, available from an inconvenient number of sources, to the lists of schools, health clinics, markets, administrative offices, and polling centers that social scientists hope to study. The remainder of this document discusses in detail our process of matching location names to geographic points. 
 <!-- [Background] relates our methods to standardized strategies of record linkage. -->
 [Example Data] describes the sample of polling stations available to download and the various points and polygons required for the linkage process. [Georeferencing] explains the techniques we've found helpful in our matching method.
 [Imputing points] discusses our process of stochastically imputing point coordinates for polling stations we could not accurately georeference.
@@ -59,7 +51,7 @@ We assume of the reader an intermediate-level understanding of the `R` programmi
 # Example Data
 We demonstrate our methods using samples of the polling stations file and a set of geocoded points. We also rely on polygon shapefiles detailing several levels of Kenyan administrative boundaries at different points in time. Finally, we use a 2010 population density raster for Kenya from [WorldPop](www.worldpop.org) [@Linard2012]. All of these data are available to download from the [GitHub repository](github.com/coletl/georef).
 
-```{r packages, message=FALSE,echo=TRUE}
+```{r packages, message=FALSE, echo=TRUE}
 # Load packages
 library(sp)
 library(maptools)
@@ -73,20 +65,19 @@ library(parallel)
 library(matrixStats)
 library(stringdist)
 library(stringr)
+library(purrr)
 library(dplyr)
 
 # Load user-defined functions
 source("code/functions.R")
 ```
 
-## Points
-We use two sets of point-specific data. First, the polling stations file, `data/ps_samp.rds`, is a sample of polling stations scraped from voter registration and electoral results documents produced in relation to the 1997, 2002, 2007, 2010, and 2013 elections in Kenya as well as the 2005 constitutional referendum. These government files provide not only the name of the active polling station in that year (e.g., "MURKISIAN PRIMARY SCHOOL") but also important information on what administrative units govern the polling station. These regionally identifying variables allow us to index to a geographic area, or "block", within which we roughly restrict our searches. (More on this below.)
+## Points 
 
-Second, we have a mass of geocoded "match points" in Kenya obtained from various local, foreign, public, and private sources. A sample of these is stored in `data/mp_samp.rds`. The accuracy of the coordinates and the consistency of formatting in the name strings vary by source. Each "match point" represents a potential location for a given polling station, but the match points file is, in reality, neither complete nor unambiguous. Therefore, while the procedure outlined here links these two files and yields a version of the polling stations file with geographic coordinates attached to each record, some of these coordinates cannot be matched to and must be imputed instead.
-
-```{r load_pts, echo=TRUE, message=FALSE, warning=FALSE, cache=TRUE}
+We use two sets of point-specific data. First, the polling stations file, `data/ps_samp.rds`, is a sample of polling stations scraped from voter registration and electoral results documents produced in relation to the 1997, 2002, 2007, 2010, and 2013 elections in Kenya as well as the 2005 constitutional referendum. These government files provide not only the name of the active polling station in that year (e.g., “MURKISIAN PRIMARY SCHOOL”) but also important information on what administrative units govern the polling station. These regionally identifying variables allow us to index to a geographic area, or “block”, within which we roughly restrict our searches. (More on this below.) Second, we have a mass of geocoded “match points” in Kenya obtained from various local, foreign, public, and private sources. A sample of these is stored in `data/mp_samp.rds`. The accuracy of the coordinates and the consistency of formatting in the name strings vary by source. Each “match point” represents a potential location for a given polling station, but the match points file is, in reality, neither complete nor unambiguous. Therefore, while the procedure outlined here links these two files and yields a version of the polling stations file with geographic coordinates attached to each record, some of these coordinates cannot be matched to and must be imputed instead. 
+```{r load_pts, echo=TRUE, message=FALSE, warning=FALSE}
 # Read points data
-ps <- readRDS("data/ps_samp.rds")@data
+ps <- readRDS("data/ps_samp.rds")
 mp <- readRDS("data/mp_samp.rds")
 ```
 
@@ -101,12 +92,12 @@ The polygon files included with this document represent several administrative l
 5. locations,
 6. sublocations.
 
-```{r load_polys, echo=TRUE, message=FALSE, warning=FALSE, cache=TRUE}
+```{r load_polys, echo=TRUE, message=FALSE, warning=FALSE}
 # Read polygons data
 const_old <- readRDS("data/const_old.rds")
 const13 <- readRDS("data/const13.rds")
-# caw <- readRDS("data/caw.rds")
-# caw_old <- readRDS("data/caw_old.rds")
+caw <- readRDS("data/caw.rds")
+caw_old <- readRDS("data/caw_old.rds")
 sl <- readRDS("data/sl.rds")
 ```
 
@@ -122,7 +113,7 @@ Understanding the quality of the polygon shapefiles informs us, if roughly, of h
 First, the level of detail provided at the boundaries of shapefile features indicates the amount of time, money, and effort put into creating the data. Building shapefiles that accurately represent the geography on the ground is labor intensive. Shortcuts, just like lower-resolution raster files, produce unrealistically rectangular boundaries where the land's natural cuts and curves were too costly to map. These differences are most conspicuous along shorelines.
 
 Below, we plot the overlay of three constituencies bordering Lake Victoria as represented in two different shapefiles.
-```{r bound_plot, message=FALSE, warning=FALSE, echo=FALSE, cache=TRUE}
+```{r bound_plot, message=FALSE, warning=FALSE, echo=FALSE}
 ex_const13 <- gUnaryUnion(const13[const13$const %in% c("MBITA", "SUBA", "NYATIKE"), ])
 
 ex_sl <- gUnaryUnion(sl[ex_const13, ])
@@ -149,9 +140,10 @@ Despite converting the object into a single feature, we still observe a partial 
 
 ### A note on coordinate reference systems{-}
 
-Whenever possible, we use UTM zone 37S as our coordinate reference system. Working with a projected CRS allows us to use functions like `gBuffer()` seamlessly, defining buffer widths in easily understood units like meters. If you are working with a relatively small area (e.g., a single medium-sized country), we would recommend picking an appropriate projected CRS early in your data cleaning process.
+Whenever possible, we use UTM zone 37S as our coordinate reference system. Working with a projected CRS allows us to use functions like `gBuffer()` seamlessly, defining buffer widths in easily understood units like meters. If you are working with a relatively small area (e.g., a single medium-sized country), we would recommend picking an appropriate projected CRS early in the data cleaning process.
 
 # Georeferencing
+
 We now outline our methods of finding the closest geographic match for polling stations in Kenya. It is worth noting now that our objective is neither to find the closest string match nor to find as many schools or health clinics as possible. Rather, we aim to minimize geographic error, even at the cost of finding what is certainly the wrong point.
 
 ## Preprocessing
@@ -220,19 +212,35 @@ We first buffer our constituency polygons by 500 meters to account for error in 
 
 
 ```{r mp_sl_constb, cache=TRUE}
-# Buffer old constituencies
-l_const <- split(const_old, const_old$id)
-l_constb <- mclapply(l_const, gBuffer, mc.cores = 6)
+# Buffer old and new constituencies
+constb <- gBuffer(const_old, byid = TRUE, width = 500)
+l_constb <- split(constb, constb$id)
+
+const13b <- gBuffer(const13, byid = TRUE, width = 500)
+l_const13b <- split(const13b, const13$constid)
+
+# Add sublocation and location information to match points
+row.names(mp) <- 1:nrow(mp)
+mp_sl <- over(mp, sl)
+mp@data <- data.frame(mp@data, mp_sl)
 
 # Split match points by buffered constituency
 mp_constb <- mclapply(l_constb, function(x) mp[x, ],
                       mc.cores = 6)
 save_list(mp_constb, "data/mp_constb")
 
+mp_const13b <- mclapply(l_const13b, function(x) mp[x, ],
+                        mc.cores = 6)
+save_list(mp_const13b, "data/mp_const13b")
+
 # Split sublocations by buffered constituency
 sl_constb <- mclapply(l_constb, function(x) sl[x, ],
                       mc.cores = 6)
 save_list(sl_constb, "data/sl_constb")
+
+sl_const13b <- mclapply(l_const13b, function(x) sl[x, ],
+                        mc.cores = 6)
+save_list(sl_const13b, "data/sl_const13b")
 ```
 
 Each match points and sublocations subset is named for the old (i.e., pre-2013) constituency code in which the spatial features are contained. We use these constituency codes as blocking keys by searching for matches only within subsets corresponding to a polling station's constituency. For example, when searching for matches to a polling station assigned to constituency `067` in 2002, we load only the objects in `data/mp_constb/067.rds` and `data/sl_constb/067.rds`.
@@ -242,7 +250,7 @@ We use the `stringdist` package to calculate [Jaro-Winkler distances](https://en
 
 Aside from supporting multiple string metrics, one advantage of `stringdist()` over `agrep()` is that it provides a sense of how the distance calculations change across comparisons. Inspecting the results by hand allows you to pick precise thresholds for the minimum acceptable string distance.
 
-```{r stringdist, cache = TRUE}
+```{r stringdist}
 set.seed(575)
 # Sample polling stations to work with and pull out 
 # the names of their 2002 sublocations
@@ -321,22 +329,56 @@ tmatch@data <-
 
 Our result here, `tmatch`, contains a single likely location for the polling station chosen. We've also included additional data on the quality of each match, as well as the ID number of the sublocation in which we matched the polling station.
 
-<!-- ### Inferring administrative boundaries -->
-<!-- The example above would constitute a single step in our matching process. We iterate the same basic procedure for all unmatched polling stations using progressively less precise blocking methods. -->
+## Running matching algorithms in parallel
+The example above would constitute a single step in our matching algorithm. In our full record-linkage process, we iterate a similar procedure for all unmatched polling stations using progressively less precise blocking methods and appropriately adjusted string distance thresholds. The `code/functions.R` script contains the full code for our two most precise matching functions: `match_lsl()` and `match_inf_loc13()`. Please refer to that script for more detailed comments on how these functions differ from the example above. Below, we demonstrate how to apply these two functions to the full sample data set. We run these fairly intensive processes in parallel.[^nb_parallel] These two functions accept four arguments: a single row of polling station data, a constituency `sp` object, a vector of urban constituency IDs (for adjusted quality measures), and a vector of column names indicating which polygons to search for when matching. Instead of returning a data frame, these functions output a list, though the data contained are essentially the same.
 
-<!-- The lower levels of precision are typically due to using lower-quality, less recent data or using larger polygons to subset the match points. A polling station may be missing the data that allow us to link it to a relatively small polygon. In these cases, it may be possible to infer that polling station's inclusion in a set of administrative boundaries, based on data from other polling stations. -->
+```{r match_lsl, cache=TRUE, warning=FALSE}
+# Split polling stations into list
+match_list <- split(ps, ps$uid)
+# Find old urban constituency IDs
+urb_county <- c("MOMBASA", "NAIROBI CITY", "NAKURU", "KISUMU")
+urb_constid02 <- unique(filter(ps, county13 %in% urb_county)$constid02)
 
-<!-- For example, polling sttations newly created in 2013 are missing any information on the encompassing sublocation. However, we do observe the 2013 ward. Rather than begin by searching in an entire ward, we can instead within potential sublocation matches, defined by as boundaries have been associated with each 2013 ward according to older polling stations. We then look for match points within these -->
+# Run most precise matching function on six cores
+lsl_match <- mclapply(match_list, 
+                      match_lsl, 
+                      const = constb,
+                      urb_const = urb_constid02,
+                      polys = c("sl97", "loc97", "sl02", "loc02", "sl07", "loc07"),
+                      mc.cores = 6)
 
-<!-- # Evaluating Point Matches -->
+# Find unmatched polling stations
+found_lsl <- map(lsl_match, "match_mp")
+no_match <- which(sapply(found_lsl, is.character))
+```
 
-<!-- ## E pluribus unum -->
+### Inferring missing polygon data
+In subsequent matching steps, lower levels of precision are typically due to using larger polygons to subset the match points or lower-quality, less-recent data. Polling stations may be missing the data that allow us to link them to relatively small polygons. In such cases, it may be possible to infer that polling station’s inclusion in a set of administrative boundaries, based on data from other polling stations. For example, polling stations newly created in 2013 are missing any information on the encompassing sublocation. However, we do observe the 2013 ward. Rather than begin by searching in an entire ward, we can instead infer sublocation data based on other polling stations in the same ward. We then look for matches within these smaller polygons.
 
+```{r inf13, cache=TRUE, warning=FALSE}
+# Remove matched polling stations
+ps2 <- filter(ps, uid %in% names(no_match))
+# Build lists of potential locations and sublocations
+ps3 <- group_by(ps2, wardid13) %>% 
+  mutate(loc13 = na.omit(c(loc07, loc02, loc97)) %>% unique() %>% list(),
+         sl13  = na.omit(c(sl07, sl02, sl97)) %>% unique() %>% list()
+         ) %>% ungroup()
+# Find new urban constituency IDs
+urb_constid13 <- unique(filter(ps, county13 %in% urb_county)$constid13)
+
+match_list2 <- split(ps3, ps3$uid)
+inf_loc13_match <- mclapply(match_list2,
+                            match_inf_loc13,
+                            const = const13b,
+                            urb_const = urb_constid13,
+                            polys = c("sl13", "loc13"),
+                            mc.cores = 6)
+```
 
 # Imputing points
-The example above would constitute a single step in our matching process. We iterate the same basic procedure for all unmatched polling stations using progressively less precise blocking methods. The `code/functions.R` script contains the full code for our two most precise matching functions: `match_lsl()` and `match_inf_loc13()`.
 
-For any polling stations remaining unmatched after all steps, we resort to imputing points within the smallest geographic area possible. The `spatstat` package provides functions and classes to make this process simple, allowing us to use a population density raster as the probability density of the polling station locations. Below, we will continue with the previous example's polling station, as if we had not found any point matches.
+For any polling stations remaining unmatched after all steps, we resort to imputing points within the smallest geographic area possible. The `spatstat` package provides functions and classes to make this process simple, allowing us to use a population density raster as the probability density of the polling station locations. Below, we will continue with the previous example’s polling station, as if we had not found any point matches.
+
 ```{r impute}
 # Index to matched sublocation
 tsl <- sl[sl$SL_ID == tmatch$slmatch, ]
@@ -357,6 +399,4 @@ Social scientists have rapidly seized on the research potential of GIS data. How
 
 We hope that this guide can offer a useful resource for those looking to georeference points rigorously and systematically. The methods presented here are far from perfect: errors may still occur at any stage of our linkage process. However, we have found this procedure to be both sufficiently accurate and scalable to relatively large data sets.
 
-<!-- + Improvements: ML applications (random forests?) -->
-
-<!-- # References -->
+# Software

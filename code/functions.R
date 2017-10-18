@@ -76,18 +76,17 @@ class_nrow <- function(x, class){
 }
 # SPECIALIZED MATCHING FUNCTIONS ---------------------------------------------
 # Using locations and sublocations
-match_lsl <- function(tps){
+match_lsl <- function(tps, const, urb_const, polys){
+  if( !require(purrr) ) stop("match_lsl requires the purrr package.")
   
   tconst <- ifelse(is.na(tps$constid07), tps$constid02, tps$constid07)
   
   if(!is.na(tconst)){
     # Load sublocations for the polling station's constituency
-    tsl <- paste0(tconst, ".rds") %>% 
-      paste0("~/shared_projects/ps/code/matching/match_output/sl_constb/", .) %>% 
+    tsl <- paste0("data/sl_constb/", tconst, ".rds") %>% 
       readRDS()
     # Load sublocations for the polling station's constituency
-    tmp <- paste0(tconst, ".rds") %>% 
-      paste0("~/shared_projects/ps/code/matching/match_output/mp_constb/", .) %>% 
+    tmp <- paste0("data/mp_constb/", tconst, ".rds") %>% 
       readRDS()
     
     # Hand check of threshold
@@ -190,18 +189,19 @@ match_lsl <- function(tps){
       
       if(length(t_ind) > 0){
         m_trunc@data <- mutate(m_trunc@data, type_dum, subtype_dum, trunc_dist, 
-                               nested97 = ifelse(SL_ID %in% nest_97, 1, 0), nested02 = ifelse(SL_ID %in% nest_02, 1, 0),
+                               nested97  = ifelse(SL_ID %in% nest_97, 1, 0), 
+                               nested02  = ifelse(SL_ID %in% nest_02, 1, 0),
                                sl97_dist = sl97_dist[t_ind], loc97_dist = loc97_dist[t_ind],
                                sl02_dist = sl02_dist[t_ind], loc02_dist = loc02_dist[t_ind],
                                sl07_dist = sl07_dist[t_ind], loc07_dist = loc07_dist[t_ind],
-                               ps_name = tps$name02, ps_trunc = tps$trunc02)
+                               ps_name   = tps$name02, ps_trunc = tps$trunc02)
         
         # Find shortest distance to a matched polygon and compare it to a threshold that is a function of the constituency size.
         min_dist <- min(m_trunc@data[, grep(names(m_trunc@data), patt = "[0-9]_dist")], na.rm = TRUE)
-        bdist <- bbox(const2[const2$id == tconst, ]) %>% apply(1, diff) %>% min()
+        bdist <- bbox(const[const$id == tconst, ]) %>% apply(1, diff) %>% min()
         # If a match is in a rural constituency, allow for a distance threshold of up to 5km.
         # If a match is in an urban constituency, set a threshold of 2km.
-        dist_thresh <- ifelse(tconst %in% urb_constid02,
+        dist_thresh <- ifelse(tconst %in% urb_const,
                               2000,
                               min(bdist * 0.05, 5000)
         )
@@ -253,13 +253,15 @@ match_lsl <- function(tps){
   return(out)
 }
 
-match_inf_loc13 <- function(tps){
+match_inf_loc13 <- function(tps, const, urb_const, polys){
+  if( !require(purrr) ) stop("match_inf_loc13 requires the purrr package.")
+  
   if(!is.na(tps$constid13)){
     # Load sublocation for the polling station's constituency
-    tsl <- paste0("~/shared_projects/ps/code/matching/match_output/sl_const13b/", tps$constid13, ".rds") %>% 
+    tsl <- paste0("data/sl_const13b/", tps$constid13, ".rds") %>% 
       readRDS()
     # Load match points for the constituency
-    tmp <- paste0("~/shared_projects/ps/code/matching/match_output/mp_const13b/", tps$constid13, ".rds") %>% 
+    tmp <- paste0("data/mp_const13b/", tps$constid13, ".rds") %>% 
       readRDS()
     
     # Calculate string and geographic distances between each potential ps 2013 sublocation and the sublocations from the sl shapefile
@@ -318,10 +320,10 @@ match_inf_loc13 <- function(tps){
         
         # Find shortest distance to a matched polygon and compare it to a threshold that is a function of the constituency size.
         min_dist <- min(m_trunc@data[, grep(names(m_trunc@data), patt = "[0-9]_dist")], na.rm = TRUE)
-        bdist <- bbox(const2[const2$constid == tps$constid13, ]) %>% apply(1, diff) %>% min()
+        bdist <- bbox(const[const$constid == tps$constid13, ]) %>% apply(1, diff) %>% min()
         # If a match is in a rural constituency, allow for a distance threshold of up to 5km.
         # If a match is in an urban constituency, set a threshold of 2km.
-        dist_thresh <- ifelse(tps$constid13 %in% urb_constid13,
+        dist_thresh <- ifelse(tps$constid13 %in% urb_const,
                               2000,
                               min(bdist * 0.05, 5000)
         )
