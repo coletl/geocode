@@ -157,7 +157,7 @@ We now outline our methods of finding the closest geographic match for polling s
 
 ## Preprocessing
 
-It would be difficult to overstate the importance of the preprocessing stage. Time spent developing the consistency of the data early in the matching procedure can lead to enormous gains in accuracy down the road. Perhaps more importantly, this phase develops a familiarity with the data's idiosyncracies that becomes invaluable in developing strategies tailored to a specific data set or goal. By its nature, however, preprocessing requires techniques that may vary widely depending on whatever quirks of the unmatched data require standardization. We therefore begin with data that has already gone through some cleaning. We describe only a few preprocessing steps that are helpful in the most general cases, omitting any discussion of the more idiosyncratic adjustments we made.
+It would be difficult to overstate the importance of the preprocessing stage. Time spent developing the consistency of the data early in the matching procedure can lead to enormous gains in accuracy down the road. Perhaps more importantly, this phase develops a familiarity with the data's idiosyncracies that becomes invaluable when tailoring matching strategies to a specific data set or goal. By its nature, however, preprocessing requires techniques that may vary widely depending on whatever quirks of the unmatched data require standardization. We therefore begin with data that has already gone through some cleaning. We describe only a few preprocessing steps that are helpful in the most general cases, omitting any discussion of the more idiosyncratic adjustments we made.
 
 ### Truncating strings
 
@@ -168,14 +168,14 @@ It would be difficult to overstate the importance of the preprocessing stage. Ti
 <!-- sample_n(ps@data, 5) %>% dplyr::select(starts_with("name")) -->
 <!-- ``` -->
 
-Polling stations were sometimes recorded in the pattern `ALPHA PR. SCH`, but variations including `ALPHA PRY SCH`, `ALPHA PRIMARY SCHOOL`, and `ALPHA PR.SCH` also exist. This lack of standardization is common for all types of polling station locaitons. One approach would be to standardize the abbreviation of `PRIMARY` and `SCHOOL` by replacing all permutations with a single string. However, the algorithm we use for fuzzy matching not only inspects differences between strings but also normalizes that edit distance by the number of characters in each string. In the example below, we return two different string distance scores given inputs of essentially the same information.
+Polling stations were sometimes recorded in the pattern `ALPHA PR. SCH`, but variations including `ALPHA PRY SCH`, `ALPHA PRIMARY SCHOOL`, and `ALPHA PR.SCH` also exist. This lack of standardization is common for all types of polling station locations. One approach would be to standardize the abbreviation of `PRIMARY` and `SCHOOL` by replacing all permutations with a single string. However, the algorithm we use for fuzzy matching not only inspects differences between strings but also normalizes that edit distance by the number of characters in each string. In the example below, we return two different string distance scores given inputs of essentially the same information.
 
 ```{r, jw_trunc}
 stringdist("ALPHA PRIMARY SCHOOL", "BETA PRIMARY SCHOOL", method = "jw", p = 0.15)
 
 stringdist("ALPHA PR. SCH", "BETA PR. SCH", method = "jw", p = 0.15)
 ```
-For our purposes, it is more important to match polling stations to the correct geographic area, rather than matching primary schools strictly to primary schools.[^alpha_beta] We can therefore remove the nonessential information and store it separately. We do this by cataloging the most common types of polling stations, then truncating the strings to separate these labels from the information that identifies the town, village, or area the polling station is located in. The result is a truncated polling station name (e.g., `ALPHA`) with classifying information (e.g., `SCH` and `PRI`) in separate columns. Thus, when calculating the similarity of two strings (e.g.,  `ALPHA` and `BETA`), we concentrate on regionally identifying information in an effort to maximize geographic accuracy.
+For our purposes, it is more important to match polling stations to the correct geographic area, rather than matching primary schools strictly to primary schools.[^alpha_beta] We can therefore remove the nonessential information and store it separately. We do this by cataloging the most common types of polling stations, then truncating the strings to separate these labels from the information that identifies the town, village, or area in which the polling station is located. The result is a truncated polling station name (e.g., `ALPHA`) with classifying information (e.g., `SCH` and `PRI`) in separate columns. Thus, when calculating the similarity of two strings (e.g.,  `ALPHA` and `BETA`), we concentrate on regionally identifying information in an effort to maximize geographic accuracy.
 
 [^alpha_beta]: When georeferencing `ALPHA PRIMARY SCHOOL`, we would consider `ALPHA SECONDARY SCHOOL` to be a much better match than `BETA PRIMARY SCHOOL`.
 
@@ -184,7 +184,7 @@ Classifying information for each polling station-year is stored in election-spec
 ### Cleaning strings
 To improve matching further, we clean the strings of both our point (polling station) and polygon (administrative boundary) data. Most of the cleaning will likely be idiosyncratic to the locale of the data, like correcting for inconsistencies in transliteration, pronunciation, or abbreviation.
 
-One technique we've found particularly helpful is to order the elements of each string. This corrects the particularly troublesome pattern strings sometimes following the pattern `SAMBURU EAST`, while the same constituency may be recorded in a second data set as `EAST SAMBURU`. The function `order_substr()`, defined in `code/functions.R`, splits each string of a character vector at any commas, whitespace, forward slashes, and hyphens; the output is a vector with those substrings ordered alphabetically and collapsed with a single space. Alternative regular expressions for splitting can be included in the `split` parameter; other strings may be used to separate the alphabetized substrings via the `collapse` parameter.[^order_substr]
+One technique we've found particularly helpful is to order the elements of each string. This corrects the particularly troublesome problem of some strings following the pattern `SAMBURU EAST`, while the same constituency may be recorded in a second data set as `EAST SAMBURU`. The function `order_substr()`, defined in `code/functions.R` of the [GitHub repository](github.com/coletl/georef), splits each string of a character vector at any commas, whitespace, forward slashes, and hyphens. The output is a vector with those substrings ordered alphabetically and collapsed with a single space. Alternative regular expressions for splitting can be included in the `split` parameter; other strings may be used to separate the alphabetized substrings via the `collapse` parameter.[^order_substr]
 
 ```{r order_substr}
 tuna <- c("tuna,skipjack", "tuna  , bluefin", "yellow-fin - tuna", "tuna,   albacore")
@@ -395,7 +395,7 @@ tsl <- sl[sl$SL_ID == tmatch$slmatch, ]
 # Read raster (file cropped from full Kenya population density raster)
 pd <- raster("data/pd_sl5109.tif")
 
-# Generate point image as probability density
+# Generate point
 ppp <- rpoint(n = 1, f = as.im(pd))
 
 # Convert to spatial point object

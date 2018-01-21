@@ -22,7 +22,7 @@ order_substr <-
     return(tmp3)
   }
 
-# Save objects in a list as separate files
+# Save elements of a list as separate files
 save_list <- 
   function(x, dir, ext = ".rds", names = NULL, 
            cores = 1, ...){
