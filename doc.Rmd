@@ -157,7 +157,7 @@ We now outline our methods of finding the closest geographic match for polling s
 
 ## Preprocessing
 
-It would be difficult to overstate the importance of the preprocessing stage. Time spent developing the consistency of the data early in the matching procedure can lead to enormous gains in accuracy down the road. Perhaps more importantly, this phase develops a familiarity with the data's idiosyncracies that becomes invaluable when tailoring matching strategies to a specific data set or goal. By its nature, however, preprocessing requires techniques that may vary widely depending on whatever quirks of the unmatched data require standardization. We therefore begin with data that has already gone through some cleaning. We describe only a few preprocessing steps that are helpful in the most general cases, omitting any discussion of the more idiosyncratic adjustments we made.
+It would be difficult to overstate the importance of preprocessing. Time spent developing the consistency of the data early in the matching procedure can lead to enormous gains in accuracy down the road. Perhaps more importantly, this phase develops a familiarity with the data's idiosyncracies that becomes invaluable when tailoring matching strategies to a specific data set or goal. By its nature, however, preprocessing requires techniques that may vary widely depending on whatever quirks of the unmatched data require standardization. We therefore begin with data that has already gone through some cleaning. We describe only a few preprocessing steps that are helpful in the most general cases, omitting any discussion of the more idiosyncratic adjustments we made.
 
 ### Truncating strings
 
@@ -168,23 +168,27 @@ It would be difficult to overstate the importance of the preprocessing stage. Ti
 <!-- sample_n(ps@data, 5) %>% dplyr::select(starts_with("name")) -->
 <!-- ``` -->
 
-Polling stations were sometimes recorded in the pattern `ALPHA PR. SCH`, but variations including `ALPHA PRY SCH`, `ALPHA PRIMARY SCHOOL`, and `ALPHA PR.SCH` also exist. This lack of standardization is common for all types of polling station locations. One approach would be to standardize the abbreviation of `PRIMARY` and `SCHOOL` by replacing all permutations with a single string. However, the algorithm we use for fuzzy matching not only inspects differences between strings but also normalizes that edit distance by the number of characters in each string. In the example below, we return two different string distance scores given inputs of essentially the same information.
+Polling stations were sometimes recorded in the pattern `ALPHA PR. SCH`, but variations including `ALPHA PRY SCH`, `ALPHA PRIMARY SCHOOL`, and `ALPHA PR.SCH` abound. This lack of standardization is common for all types of polling station locations. One approach would be to standardize the abbreviation of `PRIMARY` and `SCHOOL` by replacing all permutations with a single string. However, the [fuzzy-matching algorithm](https://en.wikipedia.org/wiki/Jaro–Winkler_distance) we use not only inspects differences between strings but also normalizes that edit distance by the number of characters in each string. In the example below, we return two different string distance scores given inputs of essentially the same information.
 
 ```{r, jw_trunc}
 stringdist("ALPHA PRIMARY SCHOOL", "BETA PRIMARY SCHOOL", method = "jw", p = 0.15)
 
 stringdist("ALPHA PR. SCH", "BETA PR. SCH", method = "jw", p = 0.15)
 ```
-For our purposes, it is more important to match polling stations to the correct geographic area, rather than matching primary schools strictly to primary schools.[^alpha_beta] We can therefore remove the nonessential information and store it separately. We do this by cataloging the most common types of polling stations, then truncating the strings to separate these labels from the information that identifies the town, village, or area in which the polling station is located. The result is a truncated polling station name (e.g., `ALPHA`) with classifying information (e.g., `SCH` and `PRI`) in separate columns. Thus, when calculating the similarity of two strings (e.g.,  `ALPHA` and `BETA`), we concentrate on regionally identifying information in an effort to maximize geographic accuracy.
+For our purposes, it is more important to match polling stations to the correct geographic area, rather than matching primary schools strictly to primary schools.[^alpha_beta] We can therefore remove the nonessential information and store it separately. We do this by cataloging the most common types of polling stations, then truncating the strings to separate these labels from the information that identifies the town, village, or area in which the polling station is located. The result is a truncated polling station name (e.g., `ALPHA`) with classifying information (e.g., `SCH` and `PRI`) in separate columns. Conveniently, in Kenya, substrings in the `ALPHA` position almost always refer to a village or other small locality. Thus, when calculating the similarity of two strings (e.g.,  `ALPHA` and `BETA`), we concentrate on regionally identifying information and concentrate on geographic accuracy.
 
-[^alpha_beta]: When georeferencing `ALPHA PRIMARY SCHOOL`, we would consider `ALPHA SECONDARY SCHOOL` to be a much better match than `BETA PRIMARY SCHOOL`.
+[^alpha_beta]: When georeferencing `ALPHA PRIMARY SCHOOL`, we would consider `ALPHA SECONDARY SCHOOL` to be a much better match than `BETA PRIMARY SCHOOL`. We are most intent on assigning the correct geographic location (`ALPHA`), not the corrrect school type.
 
-Classifying information for each polling station-year is stored in election-specific `type` and `subtype` columns. These columns align temporally with the election-specific polling station names from which these data were extracted. For example, a polling station active in 2013 will have columns for its truncated name (`ALPHA`), its type (`SCH`), and its subtype (`PRI`); separate columns will hold analogous information for any prior elections during which this polling station was active.
+Classifying data for each polling station-year are stored in election-specific `type` and `subtype` columns. These columns align temporally with the election-specific polling station names from which these data were extracted. For example, a polling station active in 2013 will have columns for its truncated name (`ALPHA`), its type (`SCH`), and its subtype (`PRI`); separate columns will hold analogous information for any prior elections during which this polling station was active.
 
 ### Cleaning strings
 To improve matching further, we clean the strings of both our point (polling station) and polygon (administrative boundary) data. Most of the cleaning will likely be idiosyncratic to the locale of the data, like correcting for inconsistencies in transliteration, pronunciation, or abbreviation.
 
-One technique we've found particularly helpful is to order the elements of each string. This corrects the particularly troublesome problem of some strings following the pattern `SAMBURU EAST`, while the same constituency may be recorded in a second data set as `EAST SAMBURU`. The function `order_substr()`, defined in `code/functions.R` of the [GitHub repository](github.com/coletl/georef), splits each string of a character vector at any commas, whitespace, forward slashes, and hyphens. The output is a vector with those substrings ordered alphabetically and collapsed with a single space. Alternative regular expressions for splitting can be included in the `split` parameter; other strings may be used to separate the alphabetized substrings via the `collapse` parameter.[^order_substr]
+One technique we've found particularly helpful is to order the elements of each string. This corrects the particularly troublesome problem of some strings following the pattern `SAMBURU EAST`, while the same constituency may be recorded in a second data set as `EAST SAMBURU`. The function `order_substr()`, defined in `code/functions.R`, splits each string of a character vector at any commas, whitespace, forward slashes, and hyphens.[^order_substr] The output is a vector with those substrings ordered alphabetically and collapsed with a single space. Alternative regular expressions for splitting can be included in the `split` parameter; other strings may be used to separate the alphabetized substrings via the `collapse` parameter.
+
+[^order_substr]: For an actively maintained version of this function, please see [this Gist](https://gist.github.com/coletl/cac6e9a18485199e8d368101160ecff2).
+
+
 
 ```{r order_substr}
 tuna <- c("tuna,skipjack", "tuna  , bluefin", "yellow-fin - tuna", "tuna,   albacore")
@@ -197,7 +201,7 @@ order_substr(colors, collapse = "-", reverse = TRUE)
 [^order_substr]: Cleaning with the `order_substr()` function works poorly when substrings are inconsistently separated by the split pattern. For example, the vector of tuna species above hyphenates yellow-fin but leaves bluefin as a single word. Therefore, with the default split patterns, `order_substr()` splits "yellow-fin" prior to alphabetizing the string. (In this particular case, a good fix may be to adjust the regex to split at hyphens only when they are surrounded by whitespace.)
 
 ## Linking Polling Stations to Match Points
-We define a function for each of several matching steps. These steps differ primarily in terms of which lower-level polygons they use (e.g., sublocation, old ward, new ward). To cut down on processing time, we run these functions on multiple cores via `mclapply()`.[^nb_parallel]
+We define a function for each of several matching steps. These steps differ primarily in terms of which lower-level polygons they use (e.g., sublocation, old ward, new ward). To cut down on processing time, we run these functions on multiple cores via `parallel::mclapply()`.[^nb_parallel]
 
 [^nb_parallel]: If you are running this code on a machine with less than 32GB of RAM, we suggest decreasing the `mc.cores` parameter for the matching processes.
 
@@ -215,7 +219,7 @@ Each matching function follows the same basic framework:
 Below, we describe the blocking and fuzzy matching steps in detail before walking through the code for a simplified matching function with a single polling station. We then use the example data sets to demonstrate the two functions we used first in our matching process, `match_lsl()` and `match_inf_loc13()`. Together, these functions georeference roughly 75 percent of Kenya's 1997-2013 polling stations. We discuss two techniques particular to these functions; their full definitions can be found in `code/functions.R`.
 
 ### Blocking with polygon boundaries
-Our full data set of match points contains over 125,000 coordinates. Running matching algorithms for each of the nearly 26,000 polling stations would therefore be hugely expensive. To save time and RAM, we adapt a common record linkage technique, blocking, to a spatial context: we split our matching data geographically and use constituency code identifiers as a blocking key.
+Our full data set of match points contains over 125,000 coordinates. Running matching algorithms for each of the nearly 26,000 polling stations against all match points would therefore be hugely expensive. To save time and RAM, we adapt a common record-linkage technique, blocking, to a spatial context: we split our matching data geographically and use constituency code identifiers as a blocking key.
 
 We first buffer our constituency polygons by 500 meters to account for error in the spatial data. Next, we build a list in which each element is the subset of match points contained by each of the buffered constituencies. We use a convenience function defined in `code/functions.R`, to save each object in a new directory: `data/mp_constb/`. By default, the name of each file matches the name of the list element to which the file corresponds. We repeat this process to split the sublocation polygons into constituency blocks.
 
@@ -339,7 +343,14 @@ tmatch@data <-
 Our result here, `tmatch`, contains a single likely location for the polling station chosen. We've also included additional data on the quality of each match, as well as the ID number of the sublocation in which we matched the polling station.
 
 ## Running matching algorithms in parallel
-The example above would constitute a single step in our matching algorithm. In our full record-linkage process, we iterate a similar procedure for all unmatched polling stations using progressively less precise blocking methods and appropriately adjusted string distance thresholds. The `code/functions.R` script contains the full code for our two most precise matching functions: `match_lsl()` and `match_inf_loc13()`. Please refer to that script for more detailed comments on how these functions differ from the example above. Below, we demonstrate how to apply these two functions to the full sample data set. We run these fairly intensive processes in parallel.[^nb_parallel] These two functions accept four arguments: a single row of polling station data, a constituency `sp` object, a vector of urban constituency IDs (for adjusted quality measures), and a vector of column names indicating which polygons to search for when matching. Instead of returning a data frame, these functions output a list, though the data contained are essentially the same.
+The example above would constitute a single step in our matching algorithm. In our full record-linkage process, we iterate a similar procedure for all unmatched polling stations using progressively less precise blocking methods and appropriately adjusted string distance thresholds. The `code/functions.R` script contains the full code for our two most precise matching functions: `match_lsl()` and `match_inf_loc13()`. Please refer to that script for more detailed comments on how these functions differ from the example above. Below, we demonstrate how to apply these two functions to the full sample data set. We run these fairly intensive processes in parallel.[^nb_parallel] These two functions accept three arguments: 
+
+1) a single row of polling station data, 
+2) a constituency `sp` object, 
+3) a vector of urban constituency IDs (for adjusted quality measures), and
+4) a vector of column names indicating which polygons to search for when matching.
+
+Instead of returning a data frame, these functions output a list, though the data contained are essentially the same.
 
 ```{r match_lsl, cache=TRUE, warning=FALSE}
 # Split polling stations into list
@@ -362,7 +373,7 @@ no_match <- which(sapply(found_lsl, is.character))
 ```
 
 ### Inferring missing polygon data
-In subsequent matching steps, lower levels of precision are typically due to using larger polygons to subset the match points or lower-quality, less-recent data. Polling stations may be missing the data that allow us to link them to relatively small polygons. In such cases, it may be possible to infer that polling station’s inclusion in a set of administrative boundaries, based on data from other polling stations. For example, polling stations newly created in 2013 are missing any information on the encompassing sublocation. However, we do observe the 2013 ward. Rather than begin by searching in an entire ward, we can instead infer sublocation data based on other polling stations in the same ward. We then look for matches within these smaller polygons.
+In subsequent matching steps, lower levels of precision are typically due to using larger polygons to subset the match points or lower-quality, less-recent data. Polling stations may be missing the data that allow us to link them to relatively small polygons. In such cases, it may be possible to infer that polling station’s inclusion in a set of administrative boundaries, based on data from other polling stations. For example, polling stations newly created in 2013 are missing any information on the encompassing sublocation. However, we do observe the 2013 ward. Rather than begin by searching in an entire ward, we can instead infer sublocation data based on previously established polling stations in the same ward. We then look for matches within these smaller, high-quality polygons.
 
 ```{r inf13, cache=TRUE, warning=FALSE}
 # Remove matched polling stations
