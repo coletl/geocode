@@ -1,4 +1,4 @@
-# Approximate Georeferencing
+# Approximate Geocoding
 
 Social scientists have rapidly seized on the research potential of GIS data. However, the analyses that spatial data afford almost always require some amount of record linkage to join quantities of interest to the relevant spatial covariates. In locations with a nascent spatial data industry, researchers’ typical problems managing messy data are compounded with the difficulties of working with imprecise or unstandardized GIS files.
 
