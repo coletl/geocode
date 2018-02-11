@@ -1,5 +1,5 @@
 ---
-title: "Approximate Georeferencing"
+title: "Approximate Geocoding"
 subtitle: "Fuzzy-matched record linkage of geographic point data"
 author: 
  - "J. Andrew Harris"
@@ -7,7 +7,7 @@ author:
  
 # abstract: Social scientists have rapidly seized on the research potential of GIS data. However, the analyses that spatial data afford almost always require some amount of record linkage to join quantities of interest to the relevant spatial covariates. In locations with a still-nascent spatial data industry, researchers' typical problems managing messy data are compounded with the difficulties of working with imprecise or unstandardized GIS files. We outline methods of record linkage specialized to the context of spatial data and subsequently used to assign geographic coordinates to all Kenyan polling stations from 1997 to 2013. Through a generalizable example of this automated geocoding process, we provide what we hope to be a helpful guide for rigorous, systematic record linkage in the world of messy spatial data.
 
-keywords: "record linkage, georeferencing, geocoding"
+keywords: "geocoding, fuzzy matching, record linkage"
 
 bibliography: references.bib
 nocite: | 
@@ -38,8 +38,8 @@ The dearth of readily available, high-quality spatial data in the developing wor
 
 The remainder of this document discusses in detail our process of matching location names to geographic points. 
 <!-- [Background] relates our methods to standardized strategies of record linkage. -->
-[Example Data] describes the sample of polling stations available to download and the various points and polygons required for the linkage process. [Georeferencing] explains the techniques we've found helpful in our matching method.
-[Imputing points] discusses our process of stochastically imputing point coordinates for polling stations we could not accurately georeference.
+[Example Data] describes the sample of polling stations available to download and the various points and polygons required for the linkage process. [Geocoding] explains the techniques we've found helpful in our matching method.
+[Imputing points] discusses our process of stochastically imputing point coordinates for polling stations we could not accurately geocode.
 
 We assume of the reader an intermediate-level understanding of the `R` programming langauge and basic familiarity with the S4 spatial data classes defined in the `sp` package [@base;@sp]. Some processes in this document are run in parallel on six cores. All operations are performed on a server running R version 3.4.0 (64-bit) under Ubuntu 14. Reproducing the results on a machine with less than 32GB of RAM or using the 32-bit version of R may require adjusting the code.
 
@@ -53,7 +53,7 @@ We assume of the reader an intermediate-level understanding of the `R` programmi
 <!-- ## Applications in the social sciences -->
 
 # Example Data
-We demonstrate our methods using samples of the polling stations file and a set of geocoded points. We also rely on polygon shapefiles detailing several levels of Kenyan administrative boundaries at different points in time. Finally, we use a 2010 population density raster for Kenya from [WorldPop](www.worldpop.org) [@Linard2012]. All of these data are available to download from the [GitHub repository](github.com/coletl/georef).
+We demonstrate our methods using samples of the polling stations file and a set of geocoded points. We also rely on polygon shapefiles detailing several levels of Kenyan administrative boundaries at different points in time. Finally, we use a 2010 population density raster for Kenya from [WorldPop](www.worldpop.org) [@Linard2012]. All of these data are available to download from the [GitHub repository](github.com/coletl/geocode).
 
 ```{r packages, message=FALSE, echo=TRUE}
 # Load packages
@@ -151,7 +151,7 @@ Despite converting the object into a single feature, we still observe a partial 
 
 Whenever possible, we use UTM zone 37S as our coordinate reference system. Working with a projected CRS allows us to use functions like `gBuffer()` seamlessly, defining buffer widths in easily understood units like meters. If you are working with a relatively small area (e.g., a single medium-sized country), we would recommend picking an appropriate projected CRS early in the data cleaning process.
 
-# Georeferencing
+# Geocoding
 
 We now outline our methods of finding the closest geographic match for polling stations in Kenya. It is worth noting now that our objective is neither to find the closest string match nor to find as many schools or health clinics as possible. Rather, we aim to minimize geographic error, even at the cost of finding what is certainly the wrong point.
 
@@ -177,7 +177,7 @@ stringdist("ALPHA PR. SCH", "BETA PR. SCH", method = "jw", p = 0.15)
 ```
 For our purposes, it is more important to match polling stations to the correct geographic area, rather than matching primary schools strictly to primary schools.[^alpha_beta] We can therefore remove the nonessential information and store it separately. We do this by cataloging the most common types of polling stations, then truncating the strings to separate these labels from the information that identifies the town, village, or area in which the polling station is located. The result is a truncated polling station name (e.g., `ALPHA`) with classifying information (e.g., `SCH` and `PRI`) in separate columns. Conveniently, in Kenya, substrings in the `ALPHA` position almost always refer to a village or other small locality. Thus, when calculating the similarity of two strings (e.g.,  `ALPHA` and `BETA`), we concentrate on regionally identifying information and concentrate on geographic accuracy.
 
-[^alpha_beta]: When georeferencing `ALPHA PRIMARY SCHOOL`, we would consider `ALPHA SECONDARY SCHOOL` to be a much better match than `BETA PRIMARY SCHOOL`. We are most intent on assigning the correct geographic location (`ALPHA`), not the corrrect school type.
+[^alpha_beta]: When geocoding `ALPHA PRIMARY SCHOOL`, we would consider `ALPHA SECONDARY SCHOOL` to be a much better match than `BETA PRIMARY SCHOOL`. We are most intent on assigning the correct geographic location (`ALPHA`), not the corrrect school type.
 
 Classifying data for each polling station-year are stored in election-specific `type` and `subtype` columns. These columns align temporally with the election-specific polling station names from which these data were extracted. For example, a polling station active in 2013 will have columns for its truncated name (`ALPHA`), its type (`SCH`), and its subtype (`PRI`); separate columns will hold analogous information for any prior elections during which this polling station was active.
 
@@ -216,7 +216,7 @@ Each matching function follows the same basic framework:
 7. Among the matches with the minimum string distance score, pick those with the best quality scores.
 8. Throw out matches that are too far from the polling station's lower-level administrative boundaries.
 
-Below, we describe the blocking and fuzzy matching steps in detail before walking through the code for a simplified matching function with a single polling station. We then use the example data sets to demonstrate the two functions we used first in our matching process, `match_lsl()` and `match_inf_loc13()`. Together, these functions georeference roughly 75 percent of Kenya's 1997-2013 polling stations. We discuss two techniques particular to these functions; their full definitions can be found in `code/functions.R`.
+Below, we describe the blocking and fuzzy matching steps in detail before walking through the code for a simplified matching function with a single polling station. We then use the example data sets to demonstrate the two functions we used first in our matching process, `match_lsl()` and `match_inf_loc13()`. Together, these functions geocode roughly 75 percent of Kenya's 1997-2013 polling stations. We discuss two techniques particular to these functions; their full definitions can be found in `code/functions.R`.
 
 ### Blocking with polygon boundaries
 Our full data set of match points contains over 125,000 coordinates. Running matching algorithms for each of the nearly 26,000 polling stations against all match points would therefore be hugely expensive. To save time and RAM, we adapt a common record-linkage technique, blocking, to a spatial context: we split our matching data geographically and use constituency code identifiers as a blocking key.
@@ -293,7 +293,7 @@ In the example above, fourteen of the twenty polling stations were associated wi
 
 
 ### Walkthrough with one polling station
-We'll now go through the steps outlined above in order to match a single polling station. This workflow demonstrates the core stages of our georeferencing procedure: spatial blocking, fuzzy string matching, and match evaluation. We simplify the exercise by using polygon data only from 2002. The point name strings have already been cleaned and truncated.
+We'll now go through the steps outlined above in order to match a single polling station. This workflow demonstrates the core stages of our geocodeing procedure: spatial blocking, fuzzy string matching, and match evaluation. We simplify the exercise by using polygon data only from 2002. The point name strings have already been cleaned and truncated.
 
 ```{r walkthrough, warning = FALSE}
 # Pick a polling station
@@ -417,6 +417,6 @@ imp_point <- as(ppp, "SpatialPoints")
 # Conclusion
 Social scientists have rapidly seized on the research potential of GIS data. However, the analyses that spatial data afford almost always require some amount of record linkage to join quantities of interest to the relevant spatial covariates. In locations with a still-nascent spatial data industry, researchers' typical problems managing messy data are compounded with the difficulties of working with imprecise or unstandardized GIS files.
 
-We hope that this guide can offer a useful resource for those looking to georeference points rigorously and systematically. The methods presented here are far from perfect: errors may still occur at any stage of our linkage process. However, we have found this procedure to be both sufficiently accurate and scalable to relatively large data sets.
+We hope that this guide can offer a useful resource for those looking to geocode points rigorously and systematically. The methods presented here are far from perfect: errors may still occur at any stage of our linkage process. However, we have found this procedure to be both sufficiently accurate and scalable to relatively large data sets.
 
 # Software
